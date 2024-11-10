@@ -11,3 +11,6 @@ end
 
 %align files
 gCaMP6sOnlyReg(dr);%extremely liberal registration process with no drapping of trials
+
+%generate file that has soma activity
+summarizeSLAP2_slowIndicators(dr);
