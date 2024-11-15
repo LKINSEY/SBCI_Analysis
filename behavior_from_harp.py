@@ -12,20 +12,29 @@ from behaviorUtil import *
 #%% INITIALIZATION
 # INIT (for single session use)
 #will eventually format for general session analysis
+#Z:\ophys\Lucas\BCI_gCaMP6s\slap2\slap2_760267_2024-11-05_15-57-50\Neuron1\ExperimentSummary
+progressionArray = [
+    [(0), (1.08,1.2)], #level1
+    [(np.nan), (1.08,1.4)],#level2
+    [(np.nan), (1.08,1.6)],#level3
+    [(np.nan), (1.08,1.8)],#level4
+    [(np.nan), (1.08,2.0)] #level5
+    ]
 
-dataDir = 'Z:/ophys/Lucas/Agmat/Experiments/behavior/20241030T173008_neuron2/'
-exmptPath = 'Z:/ophys/Lucas/Agmat/Experiments/slap2/slap2_748313_2024-10-30_16-09-27/'#/Neuron2/ExperimentSummary/'
-neuronNumber = 2
+
+mouseID = '760267'
+dataDir = 'Z:/ophys/Lucas/BCI_gCaMP6s/behavior/760267/20241105T160322_neuron1/'
+exmptPath = 'Z:/ophys/Lucas/BCI_gCaMP6s/slap2/slap2_760267_2024-11-05_15-57-50/'#/Neuron2/ExperimentSummary/'
+neuronNumber = 'Neuron1'
 sessionData = load_behavior_df(dataDir)
 trials = trializeData(sessionData)
 
-exmptSummaryPath = exmptPath + f'Neuron{neuronNumber}/ExperimentSummary/Summary-241030-194541.mat'
+exmptSummaryPath = exmptPath + f'{neuronNumber}/ExperimentSummary/Summary-241109-224703.mat'
 expmtSummary = loadmat(exmptSummaryPath)
+exptSummary = np.array(expmtSummary['expmtSummary'])
 
-# %%
+# %% #LEARNING CURVE AND REACTION TIME
 
-neuronNumber = 2
-mouseID = '748313'
 performance = []
 rxnTimes = []
 motorADCCompare = []
@@ -50,18 +59,17 @@ smoothedPerformance = savgol_filter(performance, window_length=10, polyorder=1)
 
 ## PLOTS
 plt.close('all')
-plt.figure(0)
 fig, ax1 = plt.subplots()
 ax1.plot(smoothedPerformance, 'g-')
-ax1.set_ylabel(f'Performance Curve for neuron {neuronNumber}', color='g')
+ax1.set_ylabel(f'Performance Curve', color='g')
 ax2 = ax1.twinx()
 ax2.scatter(range(len(rxnTimes)),rxnTimes, color='b')
-ax2.set_ylabel(f'ReactionTimes of Neuron {neuronNumber}', color='b')
-plt.title(f'Behaviorn Performance of Neuron {neuronNumber} for {mouseID}')
+ax2.set_ylabel(f'Reaction Times', color='b')
+plt.title(f'Behavior Performance for {mouseID} on {exmptSummaryPath.split('-')[-2]}')
 plt.show()
 
-#%%
-plt.close('all')
+#%% ADC and MOTOR STEPPING PLOT
+# plt.close('all')
 fig2, ax = plt.subplots()
 cmaps = ['winter', 'autumn', 'bone'] #for motor and adc, respectively
 rowCount = 0
@@ -91,14 +99,239 @@ plt.xlabel('Trial time')
 plt.ylabel('Trial')
 
 plt.show()
-#%% 2P DATA ANALYSIS
-## 2P DATA ANALYSIS
 
-exmptSummaryPath = exmptPath + f'Neuron{neuronNumber}/ExperimentSummary/Summary-241030-194541.mat'
-expmtSummary = loadmat(exmptSummaryPath)
 
-# %%
+# %% FOR GCAMP6S DATA
+dmd1_trials = exptSummary[0,:] #this will usually be the bci dmd
+bciSomaTrace = np.array([])
+somaTime_session = np.array([])
+motorActivity = np.array([])
+motorTime_session = np.array([])
+ADCtrace = np.array([])
+ADCTime_session = np.array([])
+trialSizes = []
 
+plt.close('all')
+fig , ax = plt.subplots()
+
+firstTrial = True
+for trialIDX in range(len(dmd1_trials)-1):
+    #everything is in a try gate because when it breaks slap2 recorded an extra trial
+
+    try:
+        nFrames = dmd1_trials[trialIDX]['roiData'][0][1][0].shape[0]  #adding +1 for the nan we will use as a trial buffer...
+        trialSizes.append(nFrames) #num frames of each trial
+
+        #### ALIGNMENT 2p and HARP ####
+        trialStartTime = trials[trialIDX]['LoadCell'].index[0]
+        trialEndTime =   trials[trialIDX]['LoadCell'].index[-1]
+
+        trialTime = trialEndTime - trialStartTime
+
+        motorTrial =     trials[trialIDX]['Motor'].values
+        motorTimes =     trials[trialIDX]['Motor'].index
+        motorTrial_normalized = motorTrial
+        # if firstTrial:
+        #     ax.plot(motorTimes, (motorTrial/np.nanmax(motorTrial)), color='orange',label='Motor')
+        # else:
+        #     ax.plot(motorTimes, (motorTrial/np.nanmax(motorTrial)), color='orange')
+
+        ADCTrial =       trials[trialIDX]['ADC'].values
+        ADCTrial_normalized = ADCTrial
+        ADCTimes =       trials[trialIDX]['ADC'].index
+        ax.imshow(np.array([ADCTrial_normalized]), aspect='auto', cmap='winter', origin='lower', extent = [ADCTimes[0], ADCTimes[-1], 0, 200])
+        
+        
+        bciSomaTrace_trial = dmd1_trials[trialIDX]['roiData'][0][1][0]
+        bciSomaTrace_normalizedTrial = bciSomaTrace_trial
+        bciSoma_timespan = np.linspace(ADCTimes[0], ADCTimes[-1], len(bciSomaTrace_trial))
+        if firstTrial:
+            ax.plot(bciSoma_timespan, (bciSomaTrace_normalizedTrial) , color='black',label='BCI Trace')
+        else:
+            ax.plot(bciSoma_timespan, (bciSomaTrace_normalizedTrial) , color='black')
+        firstTrial = False
+
+        print(f'TRIAL {trialIDX} -- ***************************************')
+        print('Delta Time:', trialTime)
+        print('Delta Time - motor:', motorTimes[-1] - motorTimes[0])
+        print('Delta Time - ADC', ADCTimes[-1] - ADCTimes[0])
+        print('nFrames', nFrames)
+        print('Hz:', nFrames/trialTime)
+        print('----------------------------------------------------------')
+    except:
+        print('SLAP2 recorded +1 extra trial')
+        break
+
+plt.ylim([0.5,30])
+ax.legend()
+plt.show()
+
+print(np.cumsum(trialSizes))
+trialAccumulation = np.cumsum(trialSizes)
+
+
+#%%
+
+step = 20 #bcioutputfunction.m says every update index 20 frames
+window = 200 #bci output function calculates a window every 200 frames
+levelCount = 1
+runningLow = np.array([])
+runningHigh = np.array([]) 
+firstLevel = True
+plt.close('all')
+fig , ax = plt.subplots()
+firstTrial = True
+for level in range(len(progressionArray)-1):
+    print(f'Level {levelCount } ----------------------------')
+    trial = progressionArray[level][0]
+    if not np.isnan(trial):
+        lowThresh, highThresh = progressionArray[level][1]
+        # print('This Level', trial)  
+        if not np.isnan(progressionArray[level+1][0]):
+            nextLevel = progressionArray[level+1][0]
+        else:
+            nextLevel = -1
+
+        if nextLevel>0:
+            print('#*#*#*#*#*#*#*#*#*#', trial)
+            for trialIDX in range(trial, nextLevel-1):
+                try:
+                    nFrames = dmd1_trials[trialIDX]['roiData'][0][1][0].shape[0]  #adding +1 for the nan we will use as a trial buffer...
+                    trialSizes.append(nFrames) #num frames of each trial
+
+                    #### ALIGNMENT 2p and HARP ####
+                    trialStartTime = trials[trialIDX]['LoadCell'].index[0]
+                    trialEndTime =   trials[trialIDX]['LoadCell'].index[-1]
+
+                    trialTime = trialEndTime - trialStartTime
+
+                    motorTrial =     trials[trialIDX]['Motor'].values
+                    motorTimes =     trials[trialIDX]['Motor'].index
+                    motorTrial_normalized = motorTrial
+                    
+                    # if firstTrial:
+                    #     ax.plot(motorTimes, (motorTrial/np.nanmax(motorTrial)), color='orange',label='Motor')
+                    # else:
+                    #     ax.plot(motorTimes, (motorTrial/np.nanmax(motorTrial)), color='orange')
+
+                    ADCTrial =       trials[trialIDX]['ADC'].values
+                    ADCTrial_normalized = ADCTrial
+                    ADCTimes =       trials[trialIDX]['ADC'].index
+                    ax.imshow(np.array([ADCTrial_normalized]), aspect='auto', cmap='winter', origin='lower', extent = [ADCTimes[0], ADCTimes[-1], 0, 200])
+                    
+                    bciSomaTrace_trial = dmd1_trials[trialIDX]['roiData'][0][1][0]
+                    bciSomaTrace_normalizedTrial = bciSomaTrace_trial
+                    bciSoma_timespan = np.linspace(ADCTimes[0], ADCTimes[-1], len(bciSomaTrace_trial))
+                    if firstTrial:
+                        ax.plot(bciSoma_timespan, (bciSomaTrace_normalizedTrial) , color='black',label='BCI Trace')
+                    else:
+                        ax.plot(bciSoma_timespan, (bciSomaTrace_normalizedTrial) , color='black')
+
+                    print(f'TRIAL {trialIDX} -- ***************************************')
+                    print('Delta Time:', trialTime)
+                    print('Delta Time - motor:', motorTimes[-1] - motorTimes[0])
+                    print('Delta Time - ADC', ADCTimes[-1] - ADCTimes[0])
+                    print('nFrames', nFrames)
+                    print('Hz:', nFrames/trialTime)
+                    print('----------------------------------------------------------')
+                except:
+                    print('SLAP2 recorded +1 extra trial')
+                    break
+                runningLow = np.array([])
+                runningHigh = np.array([])
+                for idx in range(0, trialSizes[trialIDX], 20):
+                    if idx==0:
+                        continue
+                        # Ftrace = bciSomaTrace_normalizedTrial[:20]                #get the trial up until this point
+                    elif (trialSizes[trialIDX] - idx) < 20:
+                        print('lastTrialFlag')
+                        Ftrace = bciSomaTrace_normalizedTrial[idx-19:]
+                        print(Ftrace.shape)
+                    else:
+                        Ftrace = bciSomaTrace_normalizedTrial[idx-19:idx]
+                    bciWindow = Ftrace[(idx-window):idx] 
+                    baseline = np.nanpercentile(bciWindow, 20)
+
+                    low = np.tile(baseline * lowThresh,[1, Ftrace.shape[0]])[0,:]
+                    high = np.tile(baseline * highThresh,[1, Ftrace.shape[0]])[0,:]
+                    runningLow = np.append(runningLow, low)
+                    
+                    runningHigh = np.append(runningHigh, high)
+                        
+                    # break
+                # print(runningLow[:20])
+                print(bciSoma_timespan.shape, runningLow.shape)
+                ax.scatter(bciSoma_timespan,runningLow[:bciSoma_timespan.shape[0]], color='green', s=0.2)
+                ax.scatter(bciSoma_timespan,runningHigh[:bciSoma_timespan.shape[0]], color='gray', s=0.2)
+                firstTrial = False
+                break #comment out for debugging
+            levelCount+=1
+        else:
+            print('final level')
+    else:
+        break
+plt.legend()
+plt.show()
+#%%
+
+step = 20 #bcioutputfunction.m says every update index 20 frames
+window = 200 #bci output function calculates a window every 200 frames
+levelCount = 1
+runningLow = np.array([])
+runningHigh = np.array([]) 
+firstLevel = True
+for level in range(len(progressionArray)-1):
+    print(f'Level {levelCount } ----------------------------')
+    trial = progressionArray[level][0]
+    if not np.isnan(trial):
+        lowThresh, highThresh = progressionArray[level][1]
+        # print('This Level', trial)  
+        if not np.isnan(progressionArray[level+1][0]):
+            nextLevel = progressionArray[level+1][0]
+
+        else:
+            nextLevel = -1
+
+        if firstLevel:
+            startHere = 0
+            goUntil = trialAccumulation[nextLevel]
+            firstLevel = False
+            print(f'going from trial {trial} with idx of {startHere} to {nextLevel} with a idx of {goUntil}')
+        else:
+            startHere = trialAccumulation[trial]
+            goUntil = trialAccumulation[nextLevel]
+            print(f'going from trial {trial} with idx of {startHere} to {nextLevel} with a idx of {goUntil}')
+
+        for idx in range(startHere+20, goUntil, step):
+
+            Ftrace = bciSomaTrace[:idx]                #get the trial up until this point
+            Ftrace_noNans = Ftrace[~np.isnan(Ftrace)]  #remove the nans (1 nan/trial) (should be equal to accumulations because we are accumulating trial sizes without nans) 
+            bciWindow = Ftrace[(idx-window):idx]       #we get the 20th percentile of the last "windowed" time points
+            baseline = np.nanpercentile(bciWindow, 20)
+
+            low = np.tile(baseline * lowThresh,[1, 20])[0,:]
+            high = np.tile(baseline * highThresh,[1, 20])[0,:]
+
+            runningLow = np.append(runningLow, low)
+            runningHigh = np.append(runningHigh, high)
+
+        levelCount+=1
+    else:
+        break
+# # print('Sanity check', runningLow.shape[0],  bciSomaTrace.shape[0], 'Delta: ', bciSomaTrace.shape[0] - runningLow.shape[0])
+# if runningLow.shape[0] ==  bciSomaTrace.shape[0]-9:
+#     plt.figure()
+#     plt.plot(bciSomaTrace, label = 'trace')
+#     plt.scatter(np.arange(runningLow.shape[0]), runningLow, label='low'  )
+#     plt.scatter(np.arange(runningLow.shape[0]), runningHigh, label='high')
+#     plt.legend()
+#     plt.show()
+    
+    
+
+
+
+#%%
 #check which dmd has soma
 somaLoc = []
 for i in range(len(expmtSummary['exptSummary']['userROIs'])):
